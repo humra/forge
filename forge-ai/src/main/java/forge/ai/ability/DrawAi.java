@@ -54,7 +54,7 @@ public class DrawAi extends SpellAbilityAi {
         }
 
         if (ComputerUtil.playImmediately(ai, sa)) {
-            return new AiAbilityDecision(0, AiPlayDecision.CantPlayAi);
+            return new AiAbilityDecision(100, AiPlayDecision.WillPlay);
         }
 
         // Don't tap creatures that may be able to block
@@ -73,9 +73,10 @@ public class DrawAi extends SpellAbilityAi {
                 // TODO: make this configurable in the AI profile
                 return new AiAbilityDecision(100, AiPlayDecision.WillPlay);
             }
+            return new AiAbilityDecision(0, AiPlayDecision.CostNotAcceptable);
         }
 
-        return new AiAbilityDecision(0, AiPlayDecision.CantPlayAi);
+        return new AiAbilityDecision(100, AiPlayDecision.WillPlay);
     }
 
     /*
@@ -86,24 +87,24 @@ public class DrawAi extends SpellAbilityAi {
      * forge.game.card.Card)
      */
     @Override
-    protected boolean willPayCosts(Player ai, SpellAbility sa, Cost cost, Card source) {
-        if (!ComputerUtilCost.checkCreatureSacrificeCost(ai, cost, source, sa)) {
+    protected boolean willPayCosts(Player payer, SpellAbility sa, Cost cost, Card source) {
+        if (!ComputerUtilCost.checkCreatureSacrificeCost(payer, cost, source, sa)) {
             return false;
         }
 
-        if (!ComputerUtilCost.checkLifeCost(ai, cost, source, 4, sa)) {
+        if (!ComputerUtilCost.checkLifeCost(payer, cost, source, 4, sa)) {
             return false;
         }
 
-        if (!ComputerUtilCost.checkDiscardCost(ai, cost, source, sa)) {
-            AiCostDecision aiDecisions = new AiCostDecision(ai, sa, false);
+        if (!ComputerUtilCost.checkDiscardCost(payer, cost, source, sa)) {
+            AiCostDecision aiDecisions = new AiCostDecision(payer, sa, false);
             for (final CostPart part : cost.getCostParts()) {
                 if (part instanceof CostDiscard) {
                     PaymentDecision decision = part.accept(aiDecisions);
                     if (null == decision)
                         return false;
                     for (Card discard : decision.cards) {
-                        if (!ComputerUtil.isWorseThanDraw(ai, discard)) {
+                        if (!ComputerUtil.isWorseThanDraw(payer, discard)) {
                             return false;
                         }
                     }
@@ -170,12 +171,11 @@ public class DrawAi extends SpellAbilityAi {
     }
 
     @Override
-    public AiAbilityDecision chkDrawback(SpellAbility sa, Player ai) {
+    public AiAbilityDecision chkDrawback(Player ai, SpellAbility sa) {
         if (targetAI(ai, sa, sa.isTrigger() && sa.getHostCard().isInPlay())) {
             return new AiAbilityDecision(100, AiPlayDecision.WillPlay);
-        } else {
-            return new AiAbilityDecision(0, AiPlayDecision.TargetingFailed);
         }
+        return new AiAbilityDecision(0, AiPlayDecision.TargetingFailed);
     }
 
     /**
@@ -254,7 +254,7 @@ public class DrawAi extends SpellAbilityAi {
                 if (drawback && root.getXManaCostPaid() != null) {
                     numCards = root.getXManaCostPaid();
                 } else {
-                    numCards = ComputerUtilCost.getMaxXValue(sa, ai, sa.isTrigger());
+                    numCards = ComputerUtilCost.setMaxXValue(sa, ai, sa.isTrigger());
                     // try not to overdraw
                     int safeDraw = Math.abs(Math.min(computerMaxHandSize - computerHandSize, computerLibrarySize - 3));
                     if (source.isInstant() || source.isSorcery()) { safeDraw++; } // card will be spent
@@ -264,7 +264,7 @@ public class DrawAi extends SpellAbilityAi {
                     if (sa.getPayCosts().hasSpecificCostType(CostPayLife.class)) {
                         // [Necrologia, Pay X Life : Draw X Cards]
                         // Don't draw more than what's "safe" and don't risk a near death experience
-                        boolean aggroAI = (((PlayerControllerAi) ai.getController()).getAi()).getBooleanProperty(AiProps.PLAY_AGGRO);
+                        boolean aggroAI = AiProfileUtil.getBoolProperty(ai, AiProps.PLAY_AGGRO);
                         while (ComputerUtil.aiLifeInDanger(ai, aggroAI, numCards) && numCards > 0) {
                             numCards--;
                         }
@@ -289,7 +289,6 @@ public class DrawAi extends SpellAbilityAi {
         // TODO: if xPaid and one of the below reasons would fail, instead of
         // bailing reduce toPay amount to acceptable level
         if (sa.usesTargeting()) {
-            // ability is targeted
             sa.resetTargets();
 
             // if it wouldn't draw anything and its not mandatory, skip it
@@ -297,15 +296,12 @@ public class DrawAi extends SpellAbilityAi {
                 return false;
             }
 
-            // filter player that can be targeted
             PlayerCollection players = game.getPlayers().filter(PlayerPredicates.isTargetableBy(sa));
 
-            // no targets skip it
             if (players.isEmpty()) {
                 return false;
             }
 
-            // filter opponents
             PlayerCollection opps = players.filter(PlayerPredicates.isOpponentOf(ai));
 
             for (Player oppA : opps) {
@@ -530,7 +526,7 @@ public class DrawAi extends SpellAbilityAi {
             }
         }
         return true;
-    } // drawTargetAI()
+    }
 
     @Override
     protected AiAbilityDecision doTriggerNoCost(Player ai, SpellAbility sa, boolean mandatory) {
@@ -540,9 +536,8 @@ public class DrawAi extends SpellAbilityAi {
 
         if (targetAI(ai, sa, mandatory)) {
             return new AiAbilityDecision(100, AiPlayDecision.WillPlay);
-        } else {
-            return new AiAbilityDecision(0, AiPlayDecision.TargetingFailed);
         }
+        return new AiAbilityDecision(0, AiPlayDecision.TargetingFailed);
     }
 
     /* (non-Javadoc)
@@ -559,7 +554,7 @@ public class DrawAi extends SpellAbilityAi {
     }
 
     @Override
-    public boolean willPayUnlessCost(SpellAbility sa, Player payer, Cost cost, boolean alreadyPaid, FCollectionView<Player> payers) {
+    public boolean willPayUnlessCost(Player payer, SpellAbility sa, Cost cost, boolean alreadyPaid, FCollectionView<Player> payers) {
         final Card host = sa.getHostCard();
         final String aiLogic = sa.getParam("UnlessAI");
 
@@ -587,6 +582,6 @@ public class DrawAi extends SpellAbilityAi {
         }
         // TODO add logic for Discard + Draw Effects
 
-        return super.willPayUnlessCost(sa, payer, cost, alreadyPaid, payers);
+        return super.willPayUnlessCost(payer, sa, cost, alreadyPaid, payers);
     }
 }

@@ -16,7 +16,6 @@ import forge.game.player.Player;
 import forge.game.spellability.AbilitySub;
 import forge.game.spellability.SpellAbility;
 import forge.util.Aggregates;
-import forge.util.CardTranslation;
 import forge.util.Lang;
 import forge.util.Localizer;
 import forge.util.collect.FCollection;
@@ -38,7 +37,7 @@ public class CharmEffect extends SpellAbilityEffect {
             for (AbilitySub ch : choices) {
                 // 603.3c If one of the modes would be illegal, that mode can't be chosen.
                 if ((ch.usesTargeting() && ch.getMinTargets() > 0 &&
-                        ch.getTargetRestrictions().getNumCandidates(ch, true) == 0) ||
+                        ch.getTargetRestrictions().getNumCandidates(ch) == 0) ||
                         (restriction != null && restriction.contains(ch.getDescription()))) {
                     toRemove.add(ch);
                 }
@@ -208,7 +207,7 @@ public class CharmEffect extends SpellAbilityEffect {
             return true;
         }
 
-        //this resets all previous choices
+        // reset all previous choices
         sa.setSubAbility(null);
 
         List<AbilitySub> choices = makePossibleOptions(sa);
@@ -226,8 +225,8 @@ public class CharmEffect extends SpellAbilityEffect {
         int num = AbilityUtils.calculateAmount(source, sa.getParamOrDefault("CharmNum", "1"), sa);
         final int min = sa.hasParam("MinCharmNum") ? AbilityUtils.calculateAmount(source, sa.getParam("MinCharmNum"), sa) : num;
 
-        // if the amount of choices is smaller than min then they can't be chosen
         if (!canRepeat) {
+            // not enough choices
             if (min > choices.size()) {
                 return false;
             }
@@ -235,7 +234,7 @@ public class CharmEffect extends SpellAbilityEffect {
         }
 
         boolean isOptional = sa.hasParam("Optional");
-        if (isOptional && !activator.getController().confirmAction(sa, null, Localizer.getInstance().getMessage("lblWouldYouLikeCharm", CardTranslation.getTranslatedName(source.getName())), null)) {
+        if (isOptional && !activator.getController().confirmAction(sa, null, Localizer.getInstance().getMessage("lblWouldYouLikeCharm", source.getTranslatedName()), null)) {
             return false;
         }
 

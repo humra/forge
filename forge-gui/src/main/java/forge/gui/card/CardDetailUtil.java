@@ -5,8 +5,6 @@ import forge.card.CardRarity;
 import forge.card.CardStateName;
 import forge.card.ColorSet;
 import forge.card.MagicColor;
-import forge.card.mana.ManaCostShard;
-import forge.deck.DeckRecognizer;
 import forge.game.GameView;
 import forge.game.card.Card;
 import forge.game.card.CardView;
@@ -100,23 +98,10 @@ public class CardDetailUtil {
                 borderColors.add(DetailColors.MULTICOLOR);
             }
             else { //for 3 colors or fewer, return all colors in shard order
-                for (ManaCostShard shard : cardColors.getOrderedShards()) {
-                    switch (shard.getColorMask()) {
-                    case MagicColor.WHITE:
-                        borderColors.add(DetailColors.WHITE);
-                        break;
-                    case MagicColor.BLUE:
-                        borderColors.add(DetailColors.BLUE);
-                        break;
-                    case MagicColor.BLACK:
-                        borderColors.add(DetailColors.BLACK);
-                        break;
-                    case MagicColor.RED:
-                        borderColors.add(DetailColors.RED);
-                        break;
-                    case MagicColor.GREEN:
-                        borderColors.add(DetailColors.GREEN);
-                        break;
+                for (MagicColor.Color shard : cardColors.getOrderedColors()) {
+                    DetailColors colors = getColor(shard);
+                    if (colors != null) {
+                        borderColors.add(colors);
                     }
                 }
             }
@@ -126,6 +111,16 @@ public class CardDetailUtil {
             borderColors.add(DetailColors.UNKNOWN);
         }
         return borderColors;
+    }
+    public static DetailColors getColor(MagicColor.Color shard) {
+        return switch (shard) {
+            case WHITE -> DetailColors.WHITE;
+            case BLUE -> DetailColors.BLUE;
+            case BLACK -> DetailColors.BLACK;
+            case RED -> DetailColors.RED;
+            case GREEN -> DetailColors.GREEN;
+            default -> null;
+        };
     }
 
     public static String getCurrentColors(final CardStateView c) {
@@ -154,7 +149,7 @@ public class CardDetailUtil {
         if (item instanceof PreconDeck) {
             return ((PreconDeck) item).getDescription();
         }
-        return item.getName();
+        return item.getDisplayName();
     }
 
     public static String formatCardName(final CardView card, final boolean canShow, final boolean forAltState) {
@@ -246,13 +241,13 @@ public class CardDetailUtil {
                 PaperCard origPaperCard = null;
                 Card origCard = null;
                 try {
-                    if (!card.getName().isEmpty()) {
-                        origPaperCard = FModel.getMagicDb().getCommonCards().getCard(card.getName());
+                    if (!card.getOracleName().isEmpty()) {
+                        origPaperCard = FModel.getMagicDb().getCommonCards().getCard(card.getOracleName());
                     } else {
                         // probably a morph or manifest, try to get its identity from the alternate state
-                        String altName = card.getAlternateState().getName();
+                        String altName = card.getAlternateState().getOracleName();
                         if (!altName.isEmpty()) {
-                            origPaperCard = FModel.getMagicDb().getCommonCards().getCard(card.getAlternateState().getName());
+                            origPaperCard = FModel.getMagicDb().getCommonCards().getCard(altName);
                         }
                     }
                     if (origPaperCard != null) {
@@ -260,7 +255,7 @@ public class CardDetailUtil {
                     }
                     origIdent = origCard != null ? getCurrentColors(origCard.isFaceDown() ? CardView.get(origCard).getState(false) : CardView.get(origCard).getCurrentState()) : "";
                 } catch(Exception ex) {
-                    System.err.println("Unexpected behavior: card " + card.getName() + "[" + card.getId() + "] tripped an exception when trying to process current card colors.");
+                    System.err.println("Unexpected behavior: card " + card.getOracleName() + "[" + card.getId() + "] tripped an exception when trying to process current card colors.");
                 }
                 isChanged = !curColors.equals(origIdent);
             }
@@ -421,7 +416,7 @@ public class CardDetailUtil {
         if (pl != null) {
             Map<String, String> notes = pl.getDraftNotes();
             if (notes != null) {
-                String note = notes.get(card.getName());
+                String note = notes.get(card.getOracleName());
                 if (note != null) {
                     area.append("\n");
                     area.append("Draft Notes: ").append(note);
@@ -452,7 +447,7 @@ public class CardDetailUtil {
         if (card.getMarkedColors() != null && !card.getMarkedColors().isColorless()) {
             area.append("\n");
             area.append("(").append(Localizer.getInstance().getMessage("lblSelected")).append(": ");
-            area.append(Lang.joinHomogenous(card.getMarkedColors().stream().map(MagicColor.Color::getLocalizedName).collect(Collectors.toList())));
+            area.append(Lang.joinHomogenous(card.getMarkedColors().stream().map(MagicColor.Color::getTranslatedName).collect(Collectors.toList())));
             area.append(")");
         }
 
@@ -460,12 +455,12 @@ public class CardDetailUtil {
         if (card.getChosenColors() != null && !card.getChosenColors().isEmpty()) {
             area.append("\n");
             area.append("(").append(Localizer.getInstance().getMessage("lblChosenColors")).append(" ");
-            area.append(Lang.joinHomogenous(card.getChosenColors().stream().map(DeckRecognizer::getLocalisedMagicColorName).collect(Collectors.toList())));
+            area.append(Lang.joinHomogenous(ColorSet.fromNames(card.getChosenColors()).stream().map(MagicColor.Color::getTranslatedName).collect(Collectors.toList())));
             area.append(")");
         }
 
         // chosen cards
-        if (card.getChosenCards() != null) {
+        if (!card.getChosenCards().isEmpty()) {
             area.append("\n");
             area.append("(chosen card").append(card.getChosenCards().size() == 1 ? ": " : "s: ");
             area.append(Lang.joinHomogenous(card.getChosenCards())).append(")");
@@ -558,7 +553,7 @@ public class CardDetailUtil {
         }
 
         // controlling
-        if (card.getGainControlTargets() != null) {
+        if (!card.getGainControlTargets().isEmpty()) {
             area.append("\n");
             area.append("+Controlling: ");
             area.append(StringUtils.join(card.getGainControlTargets(), ", "));
@@ -585,21 +580,21 @@ public class CardDetailUtil {
         }
 
         // Imprint
-        if (card.getImprintedCards() != null) {
+        if (!card.getImprintedCards().isEmpty()) {
             area.append("\n");
             area.append("Imprinting: ");
             area.append(StringUtils.join(card.getImprintedCards(), ", "));
         }
 
         // CardsExiledBy
-        if (card.getExiledCards() != null) {
+        if (!card.getExiledCards().isEmpty()) {
             area.append("\n");
             area.append("Exiled: ");
             area.append(StringUtils.join(card.getExiledCards(), ", "));
         }
 
         // Haunt
-        if (card.getHauntedBy() != null) {
+        if (!card.getHauntedBy().isEmpty()) {
             area.append("\n");
             area.append("Haunted by: ");
             area.append(StringUtils.join(card.getHauntedBy(), ", "));
@@ -610,18 +605,18 @@ public class CardDetailUtil {
         }
 
         // Cipher
-        if (card.getEncodedCards() != null) {
+        if (!card.getEncodedCards().isEmpty()) {
             area.append("\n");
             area.append("Encoded: ").append(card.getEncodedCards());
         }
 
-        if (card.getUntilLeavesBattlefield() != null) {
+        if (!card.getUntilLeavesBattlefield().isEmpty()) {
             area.append("\n");
             area.append("Exiled until this leaves the battlefield: ").append(card.getUntilLeavesBattlefield());
         }
 
         // must block
-        if (card.getMustBlockCards() != null) {
+        if (!card.getMustBlockCards().isEmpty()) {
             area.append("\n");
             final String mustBlockThese = Lang.joinHomogenous(card.getMustBlockCards());
             area.append("Must block ").append(mustBlockThese);
@@ -631,6 +626,11 @@ public class CardDetailUtil {
         if (card.isExertedThisTurn()) {
             area.append("\n");
             area.append("^Exerted^");
+        }
+        // detained
+        if (card.isDetained()) {
+            area.append("\n");
+            area.append("^Detained^");
         }
 
         //show current card colors if enabled
